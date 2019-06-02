@@ -27,7 +27,8 @@ namespace System.Globalization
         // Mask used to check if Compare() has the right flags.
         private const CompareOptions ValidCompareMaskOffFlags =
             ~(CompareOptions.IgnoreCase | CompareOptions.IgnoreSymbols | CompareOptions.IgnoreNonSpace |
-              CompareOptions.IgnoreWidth | CompareOptions.IgnoreKanaType | CompareOptions.StringSort);
+              CompareOptions.IgnoreWidth | CompareOptions.IgnoreKanaType | CompareOptions.StringSort |
+              CompareOptions.NumericOrdering);
 
         // Mask used to check if GetHashCodeOfString() has the right flags.
         private const CompareOptions ValidHashCodeOfStringMaskOffFlags =
@@ -291,6 +292,16 @@ namespace System.Globalization
                 return string.CompareOrdinal(string1, string2);
             }
 
+            if ((options & CompareOptions.NumericOrdering) == 0)
+            {
+                if ((options & CompareOptions.IgnoreCase) != 0)
+                {
+                    return CompareNumeric(string1.AsSpan(), string2.AsSpan(), true);
+                }
+                
+                return CompareNumeric(string1.AsSpan(), string2.AsSpan(), false);
+            }
+            
             return CompareString(string1.AsSpan(), string2.AsSpan(), options);
         }
 
@@ -333,6 +344,16 @@ namespace System.Globalization
                     string.CompareOrdinal(string1, string2.AsSpan());
             }
 
+            if ((options & CompareOptions.NumericOrdering) == 0)
+            {
+                if ((options & CompareOptions.IgnoreCase) != 0)
+                {
+                    return CompareNumeric(string1, string2.AsSpan(), true);
+                }
+                
+                return CompareNumeric(string1, string2.AsSpan(), false);
+            }
+            
             return CompareString(string1, string2, options);
         }
 
@@ -458,6 +479,16 @@ namespace System.Globalization
                 return string.CompareOrdinal(span1, span2);
             }
 
+            if ((options & CompareOptions.NumericOrdering) == 0)
+            {
+                if ((options & CompareOptions.IgnoreCase) != 0)
+                {
+                    return CompareNumeric(span1, span2, true);
+                }
+                
+                return CompareNumeric(span1, span2, false);
+            }
+            
             return CompareString(span1, span2, options);
         }
 
@@ -1436,6 +1467,105 @@ namespace System.Globalization
             }
         }
 
+
+        public int CompareNumeric(ReadOnlySpan<char> string1, ReadOnlySpan<char> string2, bool ignoreCase)
+        {
+            int lastNumIndex = 0;
+            for (var i = 0; i < string1.Length && i < string2.Length; i++)
+            {
+                char char1 = string1[i];
+                char char2 = string2[i];
+
+                if (char.IsDigit(char1) || char.IsDigit(char2))
+                {
+                    int stringCompare = CompareString(string1.Slice(0, lastNumIndex), string2.Slice(0, lastNumIndex), CompareOptions.IgnoreCase);
+                    if (stringCompare != 0)
+                    {
+                        return stringCompare;
+                    }
+
+                    lastNumIndex = i + 1;
+                    long sum1 = (int)char.GetNumericValue(char1);
+
+                    if (sum1 == -1)
+                    {
+                        return -1;
+                    }
+
+                    for (int j = i + 1; j < string1.Length; j++)
+                    {
+                        if (char.IsDigit(string1[j]))
+                        {
+                            int num = (int)char.GetNumericValue(string1[j]);
+                            sum1 *= 10;
+                            sum1 += num;
+
+                            if (j > lastNumIndex)
+                            {
+                                lastNumIndex = j;
+                            }
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    long sum2 = (int)char.GetNumericValue(char2);
+
+                    if (sum2 == -1)
+                    {
+                        return 1;
+                    }
+
+                    for (int j = i + 1; j < string2.Length; j++)
+                    {
+                        if (char.IsDigit(string2[j]))
+                        {
+                            int num = (int)char.GetNumericValue(string2[j]);
+                            sum2 *= 10;
+                            sum2 += num;
+
+                            if (j > lastNumIndex)
+                            {
+                                lastNumIndex = j;
+                            }
+                        }
+                        else if (j < lastNumIndex)
+                        {
+                            return 1;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    if (sum1 < sum2)
+                    {
+                        return -1;
+                    }
+                    else if (sum1 > sum2)
+                    {
+                        return 1;
+                    }
+
+                    i = lastNumIndex;
+                }
+            }
+
+            if (string1.Length < string2.Length)
+            {
+                return -1;
+            }
+            else if (string1.Length > string2.Length)
+            {
+                return 1;
+            }
+
+            return string.Compare(string1, string2, ignoreCase);
+        }
+        
         public override string ToString() => "CompareInfo - " + Name;
 
         public SortVersion Version

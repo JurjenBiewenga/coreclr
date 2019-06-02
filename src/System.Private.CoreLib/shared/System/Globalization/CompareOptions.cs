@@ -16,5 +16,6 @@ namespace System.Globalization
         OrdinalIgnoreCase = 0x10000000, // This flag can not be used with other flags.
         StringSort = 0x20000000,
         Ordinal = 0x40000000, // This flag can not be used with other flags.
+        NumericOrdering = 0x00000020,
     }
 }
